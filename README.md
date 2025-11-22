@@ -33,19 +33,23 @@ git clone https://github.com/OP-88/Audio_Transcription_Sys.git
 cd Audio_Transcription_Sys
 ```
 
-2. **Install backend dependencies:**
-```bash
-cd backend
-pip install -r requirements.txt
-cd ..
+2. **Run the setup script:**
+
+**Windows:**
+```cmd
+setup.bat
 ```
 
-3. **Install frontend dependencies:**
+**macOS/Linux:**
 ```bash
-cd frontend
-npm install
-cd ..
+./setup.sh
 ```
+
+That's it! The setup script will:
+- ✅ Install backend dependencies (Python packages)
+- ✅ Install frontend dependencies (Node packages)
+- ✅ Make launchers executable
+- ✅ Install desktop icon (Linux only)
 
 ### Launch Verba
 
