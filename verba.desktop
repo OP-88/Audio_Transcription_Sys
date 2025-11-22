@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Verba
+Comment=Offline-first meeting assistant with transcription and summarization
+Exec=/home/marc/Verba-mvp/start-verba.sh
+Icon=/home/marc/Verba-mvp/verba-icon.png
+Terminal=true
+Categories=Utility;AudioVideo;Office;
+Keywords=transcription;meeting;notes;audio;
+StartupNotify=true

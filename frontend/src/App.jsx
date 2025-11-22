@@ -19,23 +19,26 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [toast, setToast] = useState(null)
   const [currentSessionId, setCurrentSessionId] = useState(null)
+  const [currentTitle, setCurrentTitle] = useState('Untitled Session')
 
   const handleTranscriptComplete = (text) => {
     setTranscript(text)
     setIsTranscribing(false)
     setSummary(null) // Clear old summary
     setCurrentSessionId(null)
+    setCurrentTitle('Untitled Session')
   }
 
-  const handleSummarize = async () => {
+  const handleSummarize = async (title) => {
     if (!transcript) return
 
     setIsSummarizing(true)
     try {
-      const data = await summarizeTranscript(transcript, true)
+      const data = await summarizeTranscript(transcript, true, title)
       setSummary(data.summary)
       setCurrentSessionId(data.session_id)
-      showToast('Summary generated successfully!', 'success')
+      setCurrentTitle(title)
+      showToast('Summary generated & session saved!', 'success')
     } catch (error) {
       showToast(error.message || 'Failed to generate summary. Please try again.')
     } finally {
@@ -43,16 +46,45 @@ function App() {
     }
   }
 
+  const handleSaveSession = async (title) => {
+    if (!transcript) return
+
+    try {
+      const { saveSession, updateSession } = await import('./api')
+
+      if (currentSessionId) {
+        // Update existing session
+        await updateSession(currentSessionId, {
+          title,
+          transcript,
+          summary: summary || {}
+        })
+        setCurrentTitle(title)
+        showToast('Session updated successfully!', 'success')
+      } else {
+        // Create new session
+        const data = await saveSession(transcript, title, summary || {})
+        setCurrentSessionId(data.session_id)
+        setCurrentTitle(title)
+        showToast('Session saved successfully!', 'success')
+      }
+    } catch (error) {
+      showToast(error.message || 'Failed to save session')
+    }
+  }
+
   const handleReset = () => {
     setTranscript('')
     setSummary(null)
     setCurrentSessionId(null)
+    setCurrentTitle('Untitled Session')
   }
 
   const handleSessionSelect = (session) => {
     setTranscript(session.transcript)
     setSummary(session.summary)
     setCurrentSessionId(session.id)
+    setCurrentTitle(session.title || 'Untitled Session')
     setSidebarOpen(false) // Close sidebar on mobile
   }
 
@@ -128,10 +160,13 @@ function App() {
                 <div className="transform transition-all duration-500 animate-slide-up">
                   <TranscriptBox
                     transcript={transcript}
+                    initialTitle={currentTitle}
                     onSummarize={handleSummarize}
+                    onSave={handleSaveSession}
                     onReset={handleReset}
                     isSummarizing={isSummarizing}
                     isTranscribing={isTranscribing}
+                    isExistingSession={!!currentSessionId}
                   />
                 </div>
               )}
@@ -141,8 +176,8 @@ function App() {
             <div>
               {summary && (
                 <div className="transform transition-all duration-500 animate-slide-up">
-                  <SummaryBox 
-                    summary={summary} 
+                  <SummaryBox
+                    summary={summary}
                     onExport={handleExport}
                     canExport={!!currentSessionId}
                   />

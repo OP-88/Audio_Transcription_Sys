@@ -18,9 +18,24 @@ function Recorder({ onTranscriptComplete, onTranscribing, onError }) {
       // Build constraints - use exact only for non-default devices
       let constraints
       if (deviceId && deviceId !== 'default') {
-        constraints = { audio: { deviceId: { exact: deviceId } } }
+        constraints = {
+          audio: {
+            deviceId: { exact: deviceId },
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            sampleRate: 48000
+          }
+        }
       } else {
-        constraints = { audio: true }
+        constraints = {
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            sampleRate: 48000
+          }
+        }
       }
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
@@ -70,6 +85,82 @@ function Recorder({ onTranscriptComplete, onTranscribing, onError }) {
     }
   }
 
+  const startScreenRecording = async () => {
+    try {
+      // Use getDisplayMedia to capture screen/window/tab with audio
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,  // Required for getDisplayMedia
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          sampleRate: 44100
+        }
+      })
+
+      // Extract only the audio track (we don't need video)
+      const audioTracks = stream.getAudioTracks()
+      if (audioTracks.length === 0) {
+        stream.getTracks().forEach(track => track.stop())
+        onError('No audio track selected. Make sure to enable "Share audio" when sharing.', 'warning')
+        return
+      }
+
+      // Create a new stream with only audio
+      const audioStream = new MediaStream(audioTracks)
+
+      // Stop video track (we don't need it)
+      stream.getVideoTracks().forEach(track => track.stop())
+
+      // Use better options for MediaRecorder
+      let options = { mimeType: 'audio/webm' }
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        options.mimeType = 'audio/webm;codecs=opus'
+      }
+
+      const mediaRecorder = new MediaRecorder(audioStream, options)
+      mediaRecorderRef.current = mediaRecorder
+      chunksRef.current = []
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          console.log('Audio chunk received:', event.data.size, 'bytes')
+          chunksRef.current.push(event.data)
+        }
+      }
+
+      mediaRecorder.onstop = async () => {
+        console.log('Recording stopped. Total chunks:', chunksRef.current.length)
+        const audioBlob = new Blob(chunksRef.current, { type: options.mimeType })
+        console.log('Final audio blob size:', audioBlob.size, 'bytes')
+
+        if (audioBlob.size < 1000) {
+          onError('Recording too short. Please record for at least 2-3 seconds.', 'warning')
+          setIsRecording(false)
+          audioStream.getTracks().forEach(track => track.stop())
+          return
+        }
+
+        await handleTranscribe(audioBlob)
+
+        // Stop all tracks
+        audioStream.getTracks().forEach(track => track.stop())
+      }
+
+      // Start recording
+      mediaRecorder.start(100)
+      setIsRecording(true)
+      setSelectedSource('System Audio')
+      console.log('Screen recording started with audio')
+    } catch (error) {
+      console.error('Error starting screen recording:', error)
+      if (error.name === 'NotAllowedError') {
+        onError('Screen sharing was cancelled or denied')
+      } else {
+        onError('Failed to start screen recording: ' + error.message)
+      }
+    }
+  }
+
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop()
@@ -85,6 +176,13 @@ function Recorder({ onTranscriptComplete, onTranscribing, onError }) {
 
       const devices = await navigator.mediaDevices.enumerateDevices()
       const audioInputs = devices.filter(device => device.kind === 'audioinput')
+
+      console.log('=== ALL AUDIO DEVICES ===')
+      audioInputs.forEach((d, i) => {
+        console.log(`${i}: ${d.label} (${d.deviceId})`)
+      })
+      console.log('========================')
+
       setAudioDevices(audioInputs)
       setShowSourceDialog(true)
     } catch (err) {
@@ -161,64 +259,56 @@ function Recorder({ onTranscriptComplete, onTranscribing, onError }) {
                 }) || audioDevices[0]
 
                 const handleSystemAudioClick = () => {
-                  if (systemDeviceToUse) {
-                    handleDeviceSelect(systemDeviceToUse.deviceId, 'System Audio')
+                  // Try to find a monitor device, otherwise fallback to default
+                  // This ensures it works even if browser hides the specific monitor label
+                  const monitorDevice = monitorDevices[0] || systemDeviceToUse || audioDevices[0]
+
+                  if (monitorDevice) {
+                    console.log('Selecting system audio device:', monitorDevice.label)
+                    handleDeviceSelect(monitorDevice.deviceId, 'System Audio')
                   } else {
-                    // If no device found, try default but warn
-                    // Or just show the setup instruction
-                    onError('System audio device not found. Please run ./setup_system_audio.sh', 'warning')
-                    // We can still try to record from default if they really want, or just stop here.
-                    // Let's try to record from default as a fallback if they insist? 
-                    // No, better to guide them to setup.
+                    onError('No audio device available for System Audio', 'warning')
                   }
                 }
 
                 return (
-                  <div className="space-y-4">
-                    {!systemDeviceToUse && (
-                      <p className="text-yellow-300 text-sm mb-3 text-center">
-                        ℹ️ System audio not configured. Run: <code className="bg-black/30 px-2 py-1 rounded">./setup_system_audio.sh</code>
-                      </p>
-                    )}
-
-                    {/* System Audio Option - ALWAYS VISIBLE */}
-                    <button
-                      onClick={handleSystemAudioClick}
-                      className="w-full px-7 py-6 rounded-2xl bg-gradient-to-br from-purple-600/30 to-blue-600/30 hover:from-purple-600/50 hover:to-blue-600/50 border-2 border-purple-400/40 hover:border-purple-300/70 transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(168,85,247,0.4)] group"
-                    >
-                      <div className="flex items-center space-x-5">
-                        <div className="text-5xl group-hover:scale-110 transition-transform">🔊</div>
-                        <div className="text-left flex-1">
-                          <div className="text-white font-bold text-2xl mb-1">System Audio</div>
-                          <div className="text-purple-200 text-base">Record videos, music, browser audio</div>
-                          <div className={`text-xs mt-1 ${systemDeviceToUse ? 'text-purple-300/60' : 'text-yellow-300/80'}`}>
-                            {systemDeviceToUse ? systemDeviceToUse.label : '⚠️ Not configured (Click to setup)'}
+                  <>
+                    <div className="space-y-4">
+                      {/* System Audio Option */}
+                      <button
+                        onClick={handleSystemAudioClick}
+                        className="w-full px-7 py-6 rounded-2xl bg-gradient-to-br from-purple-600/30 to-blue-600/30 hover:from-purple-600/50 hover:to-blue-600/50 border-2 border-purple-400/40 hover:border-purple-300/70 transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(168,85,247,0.4)] group"
+                      >
+                        <div className="flex items-center space-x-5">
+                          <div className="text-5xl group-hover:scale-110 transition-transform">🔊</div>
+                          <div className="text-left flex-1">
+                            <div className="text-white font-bold text-2xl mb-1">System Audio</div>
+                            <div className="text-purple-200 text-base">Record videos, music, browser audio</div>
+                          </div>
+                          <div className="opacity-0 group-hover:opacity-100 transition-all group-hover:translate-x-1">
+                            <span className="text-4xl text-white">→</span>
                           </div>
                         </div>
-                        <div className="opacity-0 group-hover:opacity-100 transition-all group-hover:translate-x-1">
-                          <span className="text-4xl text-white">→</span>
-                        </div>
-                      </div>
-                    </button>
+                      </button>
 
-                    {/* Microphone Option */}
-                    <button
-                      onClick={() => handleDeviceSelect(micDevice?.deviceId, 'Microphone')}
-                      className="w-full px-7 py-6 rounded-2xl bg-gradient-to-br from-green-600/30 to-emerald-600/30 hover:from-green-600/50 hover:to-emerald-600/50 border-2 border-green-400/40 hover:border-green-300/70 transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(34,197,94,0.4)] group"
-                    >
-                      <div className="flex items-center space-x-5">
-                        <div className="text-5xl group-hover:scale-110 transition-transform">🎤</div>
-                        <div className="text-left flex-1">
-                          <div className="text-white font-bold text-2xl mb-1">Microphone</div>
-                          <div className="text-green-200 text-base">Record your voice or sounds around you (meetings, lectures, conversations)</div>
-                          {micDevice && <div className="text-green-300/60 text-xs mt-1">{micDevice.label}</div>}
+                      {/* Microphone Option */}
+                      <button
+                        onClick={() => handleDeviceSelect(micDevice?.deviceId, 'Microphone')}
+                        className="w-full px-7 py-6 rounded-2xl bg-gradient-to-br from-green-600/30 to-emerald-600/30 hover:from-green-600/50 hover:to-emerald-600/50 border-2 border-green-400/40 hover:border-green-300/70 transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(34,197,94,0.4)] group"
+                      >
+                        <div className="flex items-center space-x-5">
+                          <div className="text-5xl group-hover:scale-110 transition-transform">🎤</div>
+                          <div className="text-left flex-1">
+                            <div className="text-white font-bold text-2xl mb-1">Microphone</div>
+                            <div className="text-green-200 text-base">Record your voice or sounds around you</div>
+                          </div>
+                          <div className="opacity-0 group-hover:opacity-100 transition-all group-hover:translate-x-1">
+                            <span className="text-4xl text-white">→</span>
+                          </div>
                         </div>
-                        <div className="opacity-0 group-hover:opacity-100 transition-all group-hover:translate-x-1">
-                          <span className="text-4xl text-white">→</span>
-                        </div>
-                      </div>
-                    </button>
-                  </div>
+                      </button>
+                    </div>
+                  </>
                 )
               })()}
             </div>
@@ -233,25 +323,57 @@ function Recorder({ onTranscriptComplete, onTranscribing, onError }) {
       )}
 
       <div className="relative group">
-        {/* Glassmorphism Card */}
-        <div className="backdrop-blur-xl bg-white/10 rounded-3xl border border-white/20 shadow-2xl p-8 transition-all duration-300 hover:bg-white/15">
-          <div className="flex flex-col items-center space-y-6">
+        {/* Glassmorphism Card - Dark Blue Theme */}
+        <div className="bg-slate-900/60 rounded-3xl border border-blue-500/20 shadow-[0_0_50px_rgba(59,130,246,0.15)] p-10 backdrop-blur-md">
+          <div className="flex flex-col items-center space-y-8">
             <div className="text-center">
-              <h2 className="text-3xl font-bold text-white mb-3 tracking-wide">
-                🎤 Record Audio
+              <h2 className="text-3xl font-bold text-white mb-3 tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">
+                {isRecording ? 'Recording...' : 'Record Audio'}
               </h2>
-              <p className="text-gray-300 text-sm">
-                Click the button to start recording your meeting
+              <p className="text-blue-200/70 text-sm font-medium tracking-wide">
+                {isRecording ? 'Listening to audio source' : 'Click the button to start recording'}
               </p>
             </div>
 
-            {/* Recording Button with Glow Effect */}
+            {/* Realistic Waveform Visualizer */}
+            {isRecording && (
+              <div className="flex items-center justify-center space-x-1 h-16 mb-6">
+                {/* Mirrored bars for realistic waveform look */}
+                {[...Array(20)].map((_, i) => {
+                  // Calculate height based on sine wave for smoother look + random noise
+                  // Center bars are taller
+                  const centerDist = Math.abs(i - 9.5);
+                  const baseHeight = Math.max(20, 100 - (centerDist * 8));
+
+                  return (
+                    <div
+                      key={i}
+                      className="w-1 bg-gradient-to-t from-blue-600 to-cyan-400 rounded-full"
+                      style={{
+                        height: '30%',
+                        animation: `wave ${0.8 + Math.random() * 0.4}s ease-in-out infinite alternate`,
+                        animationDelay: `${i * 0.05}s`
+                      }}
+                    ></div>
+                  )
+                })}
+                <style>{`
+                  @keyframes wave {
+                    0% { height: 20%; opacity: 0.5; }
+                    50% { height: 50%; opacity: 0.8; }
+                    100% { height: 100%; opacity: 1; }
+                  }
+                `}</style>
+              </div>
+            )}
+
+            {/* Recording Button with Blue Glow */}
             <div className="relative">
               {isRecording && (
-                <div className="absolute inset-0 bg-red-500/50 rounded-full blur-2xl animate-pulse"></div>
+                <div className="absolute inset-0 bg-red-500/30 rounded-full blur-3xl animate-pulse"></div>
               )}
               {!isRecording && !isProcessing && (
-                <div className="absolute inset-0 bg-gradient-to-r from-purple-500/50 via-pink-500/50 to-blue-500/50 rounded-full blur-xl animate-pulse"></div>
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-600/40 via-indigo-600/40 to-cyan-500/40 rounded-full blur-2xl animate-pulse"></div>
               )}
 
               <button
@@ -259,34 +381,31 @@ function Recorder({ onTranscriptComplete, onTranscribing, onError }) {
                 disabled={isProcessing}
                 className={`
                 relative w-40 h-40 rounded-full font-bold text-white text-xl
-                transition-all duration-500 shadow-2xl
+                transition-all duration-500 shadow-2xl flex flex-col items-center justify-center
                 ${isRecording
-                    ? 'bg-gradient-to-br from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 scale-110'
-                    : 'bg-gradient-to-br from-purple-500 via-pink-500 to-blue-500 hover:from-purple-600 hover:via-pink-600 hover:to-blue-600'
+                    ? 'bg-gradient-to-br from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 scale-110 ring-4 ring-red-500/20'
+                    : 'bg-gradient-to-br from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-500 hover:via-indigo-500 hover:to-cyan-500'
                   }
-                ${isProcessing ? 'opacity-50 cursor-not-allowed scale-95' : 'hover:scale-110'}
-                border-4 border-white/30
+                ${isProcessing ? 'opacity-50 cursor-not-allowed scale-95' : 'hover:scale-105 hover:shadow-[0_0_50px_rgba(59,130,246,0.6)]'}
+                border-4 border-white/10
               `}
               >
-                <span className="drop-shadow-lg">
+                <span className="drop-shadow-lg flex flex-col items-center">
                   {isProcessing ? (
-                    <div className="flex flex-col items-center">
-                      <svg className="animate-spin h-8 w-8 mb-2" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <span className="text-sm">Processing</span>
-                    </div>
+                    <>
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mb-2"></div>
+                      <span className="text-sm font-medium tracking-wide">Processing</span>
+                    </>
                   ) : isRecording ? (
-                    <div className="flex flex-col items-center">
-                      <div className="w-8 h-8 bg-white rounded-sm mb-2 animate-pulse"></div>
-                      <span>STOP</span>
-                    </div>
+                    <>
+                      <div className="h-8 w-8 bg-white rounded-md mb-2 shadow-lg"></div>
+                      <span className="text-sm font-bold tracking-widest">STOP</span>
+                    </>
                   ) : (
-                    <div className="flex flex-col items-center">
-                      <div className="w-8 h-8 bg-white rounded-full mb-2"></div>
-                      <span>RECORD</span>
-                    </div>
+                    <>
+                      <span className="text-5xl mb-2 filter drop-shadow-md">🎙️</span>
+                      <span className="text-lg font-bold tracking-wider">RECORD</span>
+                    </>
                   )}
                 </span>
               </button>

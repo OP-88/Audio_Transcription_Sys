@@ -44,13 +44,17 @@ export async function transcribeAudio(audioBlob) {
  * @param {boolean} saveSession - Whether to save as session
  * @returns {Promise<{summary: object, session_id?: string, status: string}>}
  */
-export async function summarizeTranscript(transcript, saveSession = true) {
+export async function summarizeTranscript(transcript, saveSession = true, title = null) {
   const response = await fetch(`${API_URL}/api/summarize`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ transcript, save_session: saveSession }),
+    body: JSON.stringify({
+      transcript,
+      save_session: saveSession,
+      title
+    }),
   })
 
   const data = await response.json()
@@ -63,12 +67,41 @@ export async function summarizeTranscript(transcript, saveSession = true) {
 }
 
 /**
+ * Save session directly
+ * @param {string} transcript - Transcript text
+ * @param {string} title - Session title
+ * @param {object} summary - Optional summary
+ * @returns {Promise<{session_id: string, status: string}>}
+ */
+export async function saveSession(transcript, title = null, summary = {}) {
+  const response = await fetch(`${API_URL}/api/sessions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      transcript,
+      title,
+      summary
+    }),
+  })
+
+  const data = await response.json()
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to save session')
+  }
+
+  return data
+}
+
+/**
  * Get list of sessions
  * @returns {Promise<{sessions: Array, count: number}>}
  */
 export async function listSessions() {
   const response = await fetch(`${API_URL}/api/sessions`)
-  
+
   if (!response.ok) {
     throw new Error('Failed to load sessions')
   }
@@ -83,7 +116,7 @@ export async function listSessions() {
  */
 export async function getSession(sessionId) {
   const response = await fetch(`${API_URL}/api/sessions/${sessionId}`)
-  
+
   const data = await response.json()
 
   if (!response.ok) {
@@ -100,7 +133,7 @@ export async function getSession(sessionId) {
  */
 export async function exportSession(sessionId) {
   const response = await fetch(`${API_URL}/api/sessions/${sessionId}/export`)
-  
+
   if (!response.ok) {
     throw new Error('Failed to export session')
   }
@@ -109,20 +142,44 @@ export async function exportSession(sessionId) {
 }
 
 /**
- * Delete session
+ * Update an existing session
  * @param {string} sessionId - Session ID
- * @returns {Promise<{message: string}>}
+ * @param {object} data - Data to update (title, transcript, summary)
+ * @returns {Promise<{status: string}>}
+ */
+export async function updateSession(sessionId, data) {
+  const response = await fetch(`${API_URL}/api/sessions/${sessionId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  })
+
+  const result = await response.json()
+
+  if (!response.ok) {
+    throw new Error(result.error || 'Failed to update session')
+  }
+
+  return result
+}
+
+/**
+ * Delete a session
+ * @param {string} sessionId - Session ID
+ * @returns {Promise<{status: string}>}
  */
 export async function deleteSession(sessionId) {
   const response = await fetch(`${API_URL}/api/sessions/${sessionId}`, {
     method: 'DELETE',
   })
-  
-  const data = await response.json()
+
+  const result = await response.json()
 
   if (!response.ok) {
-    throw new Error(data.error || 'Failed to delete session')
+    throw new Error(result.error || 'Failed to delete session')
   }
 
-  return data
+  return result
 }

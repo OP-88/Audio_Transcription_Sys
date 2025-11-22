@@ -20,17 +20,22 @@ class Session(Base):
     
     id = Column(String, primary_key=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    title = Column(String, nullable=True)
     transcript = Column(Text, nullable=False)
     summary_json = Column(Text, nullable=False)  # JSON string of summary dict
     
     def to_dict(self, include_full=False):
         """Convert session to dictionary"""
-        summary = json.loads(self.summary_json)
+        try:
+            summary = json.loads(self.summary_json)
+        except:
+            summary = {}
         
         if include_full:
             return {
                 "id": self.id,
                 "created_at": self.created_at.isoformat(),
+                "title": self.title or "Untitled Session",
                 "transcript": self.transcript,
                 "summary": summary
             }
@@ -39,6 +44,7 @@ class Session(Base):
             return {
                 "id": self.id,
                 "created_at": self.created_at.isoformat(),
+                "title": self.title or "Untitled Session",
                 "transcript_preview": self.transcript[:100] + "..." if len(self.transcript) > 100 else self.transcript
             }
 
@@ -54,7 +60,7 @@ class StorageManager:
         Base.metadata.create_all(self.engine)
         self.SessionLocal = sessionmaker(bind=self.engine)
     
-    def create_session(self, transcript: str, summary: Dict) -> str:
+    def create_session(self, transcript: str, summary: Dict, title: str = None) -> str:
         """
         Create a new session with transcript and summary
         Returns the session ID
@@ -65,6 +71,7 @@ class StorageManager:
         try:
             new_session = Session(
                 id=session_id,
+                title=title,
                 transcript=transcript,
                 summary_json=json.dumps(summary)
             )
@@ -108,6 +115,32 @@ class StorageManager:
         finally:
             db_session.close()
     
+    def update_session(self, session_id: str, title: str = None, transcript: str = None, summary: Dict = None) -> bool:
+        """
+        Update an existing session
+        Returns True if updated, False if not found
+        """
+        db_session = self.SessionLocal()
+        
+        try:
+            session = db_session.query(Session).filter(
+                Session.id == session_id
+            ).first()
+            
+            if session:
+                if title is not None:
+                    session.title = title
+                if transcript is not None:
+                    session.transcript = transcript
+                if summary is not None:
+                    session.summary_json = json.dumps(summary)
+                
+                db_session.commit()
+                return True
+            return False
+        finally:
+            db_session.close()
+
     def delete_session(self, session_id: str) -> bool:
         """
         Delete a session by ID

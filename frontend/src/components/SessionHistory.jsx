@@ -2,7 +2,7 @@
  * SessionHistory component - displays list of past sessions in a collapsible sidebar
  */
 import { useState, useEffect } from 'react'
-import { listSessions, getSession } from '../api'
+import { listSessions, getSession, deleteSession } from '../api'
 
 function SessionHistory({ onSessionSelect, isOpen, onToggle }) {
   const [sessions, setSessions] = useState([])
@@ -35,32 +35,30 @@ function SessionHistory({ onSessionSelect, isOpen, onToggle }) {
     }
   }
 
-  const formatDate = (dateString) => {
-    // Parse the UTC timestamp from backend and convert to local time
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffMs = now - date
-    const diffMins = Math.floor(diffMs / 60000)
-    const diffHours = Math.floor(diffMs / 3600000)
-    const diffDays = Math.floor(diffMs / 86400000)
+  const handleDelete = async (e, sessionId) => {
+    e.stopPropagation() // Prevent session selection
+    if (!window.confirm('Are you sure you want to delete this session?')) return
 
-    if (diffMins < 1) {
-      return 'Just now'
-    } else if (diffMins < 60) {
-      return `${diffMins}m ago`
-    } else if (diffHours < 24) {
-      return `${diffHours}h ago`
-    } else if (diffDays < 7) {
-      return `${diffDays}d ago`
-    } else {
-      // Show full date with time for older sessions
-      return date.toLocaleString('en-US', { 
-        month: 'short', 
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      })
+    try {
+      await deleteSession(sessionId)
+      // Remove from local state immediately
+      setSessions(sessions.filter(s => s.id !== sessionId))
+    } catch (err) {
+      setError(err.message)
     }
+  }
+
+  // Format timestamp using device's local time (UTC stored values are parsed correctly)
+  const formatTimestamp = (dateString) => {
+    const date = new Date(dateString)
+    return new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(date).replace(',', ' •')
   }
 
   return (
@@ -132,23 +130,32 @@ function SessionHistory({ onSessionSelect, isOpen, onToggle }) {
           {!loading && !error && sessions.length > 0 && (
             <div className="space-y-2">
               {sessions.map((session) => (
-                <button
+                <div
                   key={session.id}
                   onClick={() => handleSessionClick(session.id)}
-                  className="w-full text-left p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-purple-500/30 transition-all group"
+                  className="w-full text-left p-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-purple-500/30 transition-all group cursor-pointer relative"
                 >
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <span className="text-xs text-gray-400">
-                      {formatDate(session.created_at)}
-                    </span>
-                    <svg className="w-4 h-4 text-gray-500 group-hover:text-purple-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <h3 className="text-white font-medium truncate pr-2 flex-1">
+                      {session.title || 'Untitled Session'}
+                    </h3>
+                    <button
+                      onClick={(e) => handleDelete(e, session.id)}
+                      className="p-1 text-gray-500 hover:text-red-400 transition-colors rounded opacity-0 group-hover:opacity-100"
+                      title="Delete session"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
                   </div>
-                  <p className="text-sm text-gray-300 line-clamp-2 leading-relaxed">
+                  <div className="text-xs text-purple-300 mb-2 font-mono opacity-80">
+                    {formatTimestamp(session.created_at)}
+                  </div>
+                  <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed">
                     {session.transcript_preview}
                   </p>
-                </button>
+                </div>
               ))}
             </div>
           )}

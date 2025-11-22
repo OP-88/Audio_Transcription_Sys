@@ -171,28 +171,40 @@ fn setup_system_audio() {
   if let Ok(output) = default_sink_output {
     let default_sink = String::from_utf8_lossy(&output.stdout).trim().to_string();
     
-    // Create loopback from system audio to combined sink
+    // Create loopback from system audio to combined sink (for recording)
     let _ = Command::new("pactl")
       .args(&[
         "load-module",
         "module-loopback",
         &format!("source={}.monitor", default_sink),
         "sink=Verba_Combined_Audio",
-        "latency_msec=1"
+        "latency_msec=20"
       ])
       .output();
       
-    // Create loopback from microphone to combined sink
+    // Create loopback from microphone to combined sink (for recording)
     let _ = Command::new("pactl")
       .args(&[
         "load-module",
         "module-loopback",
         "source=@DEFAULT_SOURCE@",
         "sink=Verba_Combined_Audio",
-        "latency_msec=1"
+        "latency_msec=20"
       ])
       .output();
       
-    eprintln!("✅ System audio configured successfully");
+    // IMPORTANT: Create loopback from combined sink back to speakers
+    // This allows you to HEAR the audio while it's being recorded
+    let _ = Command::new("pactl")
+      .args(&[
+        "load-module",
+        "module-loopback",
+        "source=Verba_Combined_Audio.monitor",
+        &format!("sink={}", default_sink),
+        "latency_msec=20"
+      ])
+      .output();
+      
+    eprintln!("✅ System audio configured successfully (with monitoring)");
   }
 }

@@ -24,27 +24,29 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Verba API", version="0.2.0", description="Offline-first meeting assistant")
 
-# CORS configuration for local network access
-if settings.ALLOW_LOCAL_NETWORK:
-    # Allow all origins on local network for development
-    # Also allow tauri:// protocol for desktop app
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origin_regex=r"(http|https|tauri)://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\\d+)?",
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-else:
-    # Strict CORS for specific origins (including Tauri desktop app)
-    allowed_origins = settings.ALLOWED_ORIGINS + ["tauri://localhost"]
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=allowed_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+# CORS configuration
+origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "tauri://localhost",
+    "https://tauri.localhost"
+]
+
+# Add any configured origins
+origins.extend(settings.ALLOWED_ORIGINS)
+
+# Remove duplicates
+origins = list(set(origins))
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_origin_regex=r"(http|https|tauri)://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # Request/Response models
@@ -52,6 +54,14 @@ class SummarizeRequest(BaseModel):
     """Request body for summarization endpoint"""
     transcript: str
     save_session: bool = True
+    title: str = None
+
+
+class SaveSessionRequest(BaseModel):
+    """Request body for saving a session directly"""
+    transcript: str
+    title: str = None
+    summary: dict = {}
 
 
 class ErrorResponse(BaseModel):
@@ -66,17 +76,15 @@ def root():
     """Health check endpoint"""
     return {
         "status": "ok",
-        "message": "Verba API is running",
-        "version": "0.2.0"
+        "service": "Verba API",
+        "version": "0.2.0",
+        "online_features": settings.ONLINE_FEATURES_ENABLED
     }
 
 
 @app.get("/api/status")
-def get_status():
-    """
-    Get system status and configuration
-    Returns information about offline/online mode, model, device
-    """
+def status():
+    """Get system status and configuration"""
     return {
         "online_features_enabled": settings.ONLINE_FEATURES_ENABLED,
         "model": settings.WHISPER_MODEL_SIZE,
@@ -87,64 +95,36 @@ def get_status():
 
 # Transcription endpoint
 @app.post("/api/transcribe")
-async def transcribe(audio: UploadFile = File(...)):
+async def transcribe_endpoint(audio: UploadFile = File(...)):
     """
-    Transcribe audio file using Whisper
-    Accepts: audio/webm, audio/wav, audio/mp3, etc.
-    Returns: JSON with transcript text
+    Transcribe uploaded audio file
     """
+    # Create temporary file to save uploaded audio
     tmp_path = None
-    
     try:
-        # Validate file
-        if not audio.filename:
+        # Validate file type
+        if not audio.filename.endswith(('.webm', '.wav', '.mp3', '.m4a')):
             return JSONResponse(
                 status_code=400,
-                content={"error": "No audio file provided"}
+                content={"error": "Invalid file format. Supported: webm, wav, mp3, m4a"}
             )
         
-        # Save uploaded file temporarily
-        suffix = Path(audio.filename).suffix or ".webm"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+        # Save uploaded file to temp location
+        suffix = os.path.splitext(audio.filename)[1]
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             content = await audio.read()
-            
-            if len(content) == 0:
-                return JSONResponse(
-                    status_code=400,
-                    content={"error": "Audio file is empty"}
-                )
-            
-            tmp_file.write(content)
-            tmp_path = tmp_file.name
+            tmp.write(content)
+            tmp_path = tmp.name
         
         logger.info(f"Transcribing audio file: {audio.filename} ({len(content)} bytes)")
         
-        # Transcribe with preprocessing
+        # Transcribe
         transcript = transcribe_audio(tmp_path, preprocess=settings.ENABLE_AUDIO_PREPROCESSING)
         
-        if not transcript or len(transcript.strip()) == 0:
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "transcript": "",
-                    "warning": "No speech detected in audio",
-                    "status": "success"
-                }
-            )
-        
-        logger.info(f"Transcription successful: {len(transcript)} characters")
-        
-        return JSONResponse({
+        return {
             "transcript": transcript,
             "status": "success"
-        })
-    
-    except FileNotFoundError as e:
-        logger.error(f"File not found: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Audio file could not be processed", "detail": str(e)}
-        )
+        }
     
     except Exception as e:
         logger.error(f"Transcription error: {e}")
@@ -188,7 +168,7 @@ async def summarize(request: SummarizeRequest):
         session_id = None
         if request.save_session:
             try:
-                session_id = storage.create_session(request.transcript, summary)
+                session_id = storage.create_session(request.transcript, summary, request.title)
                 logger.info(f"Session saved: {session_id}")
             except Exception as e:
                 logger.error(f"Failed to save session: {e}")
@@ -210,6 +190,101 @@ async def summarize(request: SummarizeRequest):
             status_code=500,
             content={
                 "error": "Failed to generate summary. Please try again.",
+                "detail": str(e)
+            }
+        )
+
+
+class UpdateSessionRequest(BaseModel):
+    """Request body for updating a session"""
+    title: str = None
+    transcript: str = None
+    summary: dict = None
+
+
+# Direct Session Save endpoint
+@app.post("/api/sessions")
+async def create_session(request: SaveSessionRequest):
+    """
+    Save a session directly without summarization
+    """
+    try:
+        if not request.transcript or len(request.transcript.strip()) == 0:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "No transcript provided"}
+            )
+            
+        session_id = storage.create_session(request.transcript, request.summary, request.title)
+        logger.info(f"Session saved manually: {session_id}")
+        
+        return {
+            "session_id": session_id,
+            "status": "success"
+        }
+    except Exception as e:
+        logger.error(f"Failed to save session: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Failed to save session",
+                "detail": str(e)
+            }
+        )
+
+
+@app.put("/api/sessions/{session_id}")
+async def update_session(session_id: str, request: UpdateSessionRequest):
+    """
+    Update an existing session
+    """
+    try:
+        success = storage.update_session(
+            session_id, 
+            title=request.title,
+            transcript=request.transcript,
+            summary=request.summary
+        )
+        
+        if not success:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "Session not found"}
+            )
+            
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Failed to update session {session_id}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Failed to update session",
+                "detail": str(e)
+            }
+        )
+
+
+@app.delete("/api/sessions/{session_id}")
+def delete_session(session_id: str):
+    """
+    Delete a session by ID
+    """
+    try:
+        success = storage.delete_session(session_id)
+        
+        if not success:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "Session not found"}
+            )
+            
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Failed to delete session {session_id}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Failed to delete session",
                 "detail": str(e)
             }
         )

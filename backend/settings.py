@@ -21,7 +21,7 @@ WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
 DATABASE_PATH = os.getenv("DATABASE_PATH", "verba_sessions.db")
 
 # Audio processing
-ENABLE_AUDIO_PREPROCESSING = os.getenv("ENABLE_AUDIO_PREPROCESSING", "true").lower() == "true"
+ENABLE_AUDIO_PREPROCESSING = os.getenv("ENABLE_AUDIO_PREPROCESSING", "false").lower() == "true"
 
 # CORS - Allow localhost and local network access
 default_origins = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173"

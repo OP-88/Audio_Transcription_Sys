@@ -107,7 +107,9 @@ def transcribe_audio(audio_path: str, preprocess: bool = True) -> str:
             processed_path = preprocess_audio(audio_path)
             temp_file_created = (processed_path != audio_path)
         
+        print(f"Loading Whisper model ({MODEL_SIZE})...")
         model = get_model()
+        print("Model loaded. Starting transcription...")
         
         # Transcribe with faster-whisper
         # Enhanced settings for long recordings and better accent handling:
@@ -130,12 +132,15 @@ def transcribe_audio(audio_path: str, preprocess: bool = True) -> str:
         
         print(f"Detected language: {info.language} (probability: {info.language_probability:.2f})")
         print(f"Audio duration: {info.duration:.2f}s")
+        print("Processing segments...")
         
         # Combine all segments into a single transcript
         transcript_parts = []
-        for segment in segments:
+        for i, segment in enumerate(segments):
+            print(f"Processing segment {i+1}...")
             transcript_parts.append(segment.text.strip())
         
+        print(f"All {len(transcript_parts)} segments processed.")
         transcript = " ".join(transcript_parts)
         
         if not transcript or len(transcript.strip()) == 0:
