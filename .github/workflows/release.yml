@@ -77,7 +77,6 @@ jobs:
           OutFile "verba-$version-x64-setup.exe"
           InstallDir "`$PROGRAMFILES64\Verba"
           
-          !define MUI_ICON "verba-icon.png"
           !define MUI_HEADERIMAGE
           !define MUI_ABORTWARNING
           
