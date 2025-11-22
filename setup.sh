@@ -49,13 +49,59 @@ chmod +x start-verba.sh start-verba.command start-verba.py setup-audio.sh
 echo "✅ Launchers ready"
 echo ""
 
-# Install desktop icon (Linux only)
+# Install application launcher based on OS
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     echo "🖼️  Installing desktop icon..."
     mkdir -p ~/.local/share/applications
     cp verba.desktop ~/.local/share/applications/
     update-desktop-database ~/.local/share/applications/ 2>/dev/null || true
     echo "✅ Desktop icon installed - look for 'Verba' in your applications menu"
+    echo ""
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    echo "🖼️  Creating macOS Application..."
+    
+    # Create .app bundle in user Applications folder
+    APP_DIR="$HOME/Applications/Verba.app"
+    mkdir -p "$APP_DIR/Contents/MacOS"
+    mkdir -p "$APP_DIR/Contents/Resources"
+    
+    # Copy launcher script
+    cp start-verba.command "$APP_DIR/Contents/MacOS/Verba"
+    
+    # Copy icon
+    if [ -f "verba-icon.png" ]; then
+        # Convert PNG to ICNS if possible (requires imagemagick/sips)
+        if command -v sips &> /dev/null; then
+            sips -s format icns verba-icon.png --out "$APP_DIR/Contents/Resources/Verba.icns" 2>/dev/null || \
+            cp verba-icon.png "$APP_DIR/Contents/Resources/Verba.png"
+        else
+            cp verba-icon.png "$APP_DIR/Contents/Resources/Verba.png"
+        fi
+    fi
+    
+    # Create Info.plist
+    cat > "$APP_DIR/Contents/Info.plist" << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>Verba</string>
+    <key>CFBundleIconFile</key>
+    <string>Verba</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.verba.app</string>
+    <key>CFBundleName</key>
+    <string>Verba</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+</dict>
+</plist>
+EOF
+    
+    echo "✅ Verba.app created in ~/Applications - find it in Launchpad or Finder"
     echo ""
 fi
 
@@ -67,8 +113,9 @@ echo "You can now launch Verba:"
 echo ""
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    echo "  Double-click: start-verba.command"
-    echo "  Or run: ./start-verba.command"
+    echo "  1. Open Launchpad and search for 'Verba'"
+    echo "  2. Or find Verba.app in ~/Applications"
+    echo "  3. Or double-click: start-verba.command"
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     echo "  1. Click 'Verba' in your applications menu"
     echo "  2. Or run: ./start-verba.sh"
