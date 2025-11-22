@@ -18,56 +18,88 @@ A privacy-focused audio transcription system that runs entirely locally on your 
 
 ## 🚀 Quick Start
 
+### Prerequisites
+
+- **Python 3.8+** with pip
+- **Node.js 16+** with npm
+- **FFmpeg** (for audio processing)
+- **PulseAudio** (Linux only, for system audio capture)
+
 ### Installation
 
-1. Clone this repository:
+1. **Clone the repository:**
 ```bash
 git clone https://github.com/OP-88/Audio_Transcription_Sys.git
 cd Audio_Transcription_Sys
 ```
 
-2. Install backend dependencies:
+2. **Install backend dependencies:**
 ```bash
 cd backend
 pip install -r requirements.txt
 cd ..
 ```
 
-3. Install frontend dependencies:
+3. **Install frontend dependencies:**
 ```bash
 cd frontend
 npm install
 cd ..
 ```
 
-4. Make launcher executable:
-```bash
-chmod +x start-verba.sh
+### Launch Verba
+
+Choose the method for your platform:
+
+#### 🪟 Windows
+**Option 1** (Double-click):
+- Double-click `start-verba.bat` in File Explorer
+
+**Option 2** (Command Line):
+```cmd
+start-verba.bat
 ```
 
-5. Install desktop launcher (optional):
+#### 🍎 macOS
+**Option 1** (Double-click):
+- Double-click `start-verba.command` in Finder
+- *First time:* Right-click → Open → Confirm
+
+**Option 2** (Terminal):
 ```bash
-mkdir -p ~/.local/share/applications
-cp verba.desktop ~/.local/share/applications/
-update-desktop-database ~/.local/share/applications/
+./start-verba.command
 ```
 
-### Usage
+#### 🐧 Linux
+**Option 1** (Desktop Icon):
+- Install desktop launcher:
+  ```bash
+  mkdir -p ~/.local/share/applications
+  cp verba.desktop ~/.local/share/applications/
+  update-desktop-database ~/.local/share/applications/
+  ```
+- Find "Verba" in your applications menu and click to launch
 
-**Option 1: Desktop Icon**
-- Find "Verba" in your applications menu
-- Click to launch - browser opens automatically!
-
-**Option 2: Command Line**
+**Option 2** (Terminal):
 ```bash
 ./start-verba.sh
 ```
 
+#### 🌍 Cross-Platform (Any OS)
+Use the Python launcher:
+```bash
+python start-verba.py
+# or
+python3 start-verba.py
+```
+
+### What Happens Next
+
 The launcher will:
-- ✅ Start the backend server
-- ✅ Start the frontend server
-- ✅ Open your browser automatically
-- ✅ You're ready to record!
+1. ✅ Start the backend server (http://localhost:8000)
+2. ✅ Start the frontend server (http://localhost:5173)
+3. ✅ Open your browser automatically
+4. ✅ You're ready to record!
 
 ### For Zoom Meetings
 
