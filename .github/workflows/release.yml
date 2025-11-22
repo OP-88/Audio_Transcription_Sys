@@ -1,0 +1,316 @@
+name: Build Release Installers
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pyinstaller
+      
+      - name: Install frontend dependencies and build
+        run: |
+          cd frontend
+          npm install
+          npm run build
+      
+      - name: Create launcher script
+        run: |
+          @'
+          @echo off
+          cd %~dp0
+          start "" "%~dp0backend\app.exe"
+          timeout /t 3 /nobreak >nul
+          start http://localhost:5173
+          '@ | Out-File -FilePath verba-launcher.bat -Encoding ASCII
+      
+      - name: Bundle backend with PyInstaller
+        run: |
+          cd backend
+          pyinstaller --onefile --noconsole `
+            --add-data "../frontend/dist;frontend/dist" `
+            --hidden-import=uvicorn.logging `
+            --hidden-import=uvicorn.loops `
+            --hidden-import=uvicorn.loops.auto `
+            --hidden-import=uvicorn.protocols `
+            --hidden-import=uvicorn.protocols.http `
+            --hidden-import=uvicorn.protocols.http.auto `
+            --hidden-import=uvicorn.protocols.websockets `
+            --hidden-import=uvicorn.protocols.websockets.auto `
+            --hidden-import=uvicorn.lifespan `
+            --hidden-import=uvicorn.lifespan.on `
+            app.py
+      
+      - name: Install NSIS
+        run: choco install nsis -y
+      
+      - name: Create Windows Installer
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          
+          @"
+          !include "MUI2.nsh"
+          
+          Name "Verba Audio Transcription"
+          OutFile "verba-$version-x64-setup.exe"
+          InstallDir "`$PROGRAMFILES64\Verba"
+          
+          !define MUI_ICON "verba-icon.png"
+          !define MUI_HEADERIMAGE
+          !define MUI_ABORTWARNING
+          
+          !insertmacro MUI_PAGE_WELCOME
+          !insertmacro MUI_PAGE_DIRECTORY
+          !insertmacro MUI_PAGE_INSTFILES
+          !insertmacro MUI_PAGE_FINISH
+          
+          !insertmacro MUI_UNPAGE_CONFIRM
+          !insertmacro MUI_UNPAGE_INSTFILES
+          
+          !insertmacro MUI_LANGUAGE "English"
+          
+          Section "Install"
+            SetOutPath "`$INSTDIR"
+            File "backend\dist\app.exe"
+            File "verba-launcher.bat"
+            File "verba-icon.png"
+            
+            CreateDirectory "`$SMPROGRAMS\Verba"
+            CreateShortcut "`$SMPROGRAMS\Verba\Verba.lnk" "`$INSTDIR\verba-launcher.bat" "" "`$INSTDIR\verba-icon.png"
+            CreateShortcut "`$DESKTOP\Verba.lnk" "`$INSTDIR\verba-launcher.bat" "" "`$INSTDIR\verba-icon.png"
+            
+            WriteUninstaller "`$INSTDIR\Uninstall.exe"
+          SectionEnd
+          
+          Section "Uninstall"
+            Delete "`$INSTDIR\app.exe"
+            Delete "`$INSTDIR\verba-launcher.bat"
+            Delete "`$INSTDIR\verba-icon.png"
+            Delete "`$INSTDIR\Uninstall.exe"
+            Delete "`$SMPROGRAMS\Verba\Verba.lnk"
+            Delete "`$DESKTOP\Verba.lnk"
+            RMDir "`$SMPROGRAMS\Verba"
+            RMDir "`$INSTDIR"
+          SectionEnd
+          "@ | Out-File -FilePath installer.nsi -Encoding ASCII
+          
+          makensis installer.nsi
+      
+      - name: Upload Windows Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: "verba-*-x64-setup.exe"
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+      
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pyinstaller
+      
+      - name: Install frontend dependencies and build
+        run: |
+          cd frontend
+          npm install
+          npm run build
+      
+      - name: Bundle backend with PyInstaller
+        run: |
+          cd backend
+          pyinstaller --onefile \
+            --add-data "../frontend/dist:frontend/dist" \
+            --hidden-import=uvicorn.logging \
+            --hidden-import=uvicorn.loops \
+            --hidden-import=uvicorn.loops.auto \
+            --hidden-import=uvicorn.protocols \
+            --hidden-import=uvicorn.protocols.http \
+            --hidden-import=uvicorn.protocols.http.auto \
+            --hidden-import=uvicorn.protocols.websockets \
+            --hidden-import=uvicorn.protocols.websockets.auto \
+            --hidden-import=uvicorn.lifespan \
+            --hidden-import=uvicorn.lifespan.on \
+            app.py
+      
+      - name: Create DEB package
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
+          mkdir -p verba-deb/DEBIAN
+          mkdir -p verba-deb/usr/local/bin
+          mkdir -p verba-deb/usr/share/applications
+          mkdir -p verba-deb/usr/share/icons/hicolor/256x256/apps
+          
+          cp backend/dist/app verba-deb/usr/local/bin/verba
+          chmod +x verba-deb/usr/local/bin/verba
+          
+          cp verba-icon.png verba-deb/usr/share/icons/hicolor/256x256/apps/verba.png
+          
+          sed 's|Exec=.*|Exec=/usr/local/bin/verba|' verba.desktop > verba-deb/usr/share/applications/verba.desktop
+          sed -i 's|Icon=.*|Icon=verba|' verba-deb/usr/share/applications/verba.desktop
+          
+          cat > verba-deb/DEBIAN/control << EOF
+          Package: verba
+          Version: $VERSION
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: OP-88
+          Description: Audio Transcription System
+           Offline-first meeting assistant with transcription and summarization.
+           Browser-based interface with local AI processing.
+          EOF
+          
+          dpkg-deb --build verba-deb verba-${VERSION}-amd64.deb
+      
+      - name: Upload DEB package
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb
+          path: "verba-*-amd64.deb"
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pyinstaller
+      
+      - name: Install frontend dependencies and build
+        run: |
+          cd frontend
+          npm install
+          npm run build
+      
+      - name: Bundle backend with PyInstaller
+        run: |
+          cd backend
+          pyinstaller --onefile --windowed \
+            --add-data "../frontend/dist:frontend/dist" \
+            --hidden-import=uvicorn.logging \
+            --hidden-import=uvicorn.loops \
+            --hidden-import=uvicorn.loops.auto \
+            --hidden-import=uvicorn.protocols \
+            --hidden-import=uvicorn.protocols.http \
+            --hidden-import=uvicorn.protocols.http.auto \
+            --hidden-import=uvicorn.protocols.websockets \
+            --hidden-import=uvicorn.protocols.websockets.auto \
+            --hidden-import=uvicorn.lifespan \
+            --hidden-import=uvicorn.lifespan.on \
+            app.py
+      
+      - name: Create macOS App Bundle
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
+          mkdir -p "Verba.app/Contents/MacOS"
+          mkdir -p "Verba.app/Contents/Resources"
+          
+          cp backend/dist/app "Verba.app/Contents/MacOS/Verba"
+          cp verba-icon.png "Verba.app/Contents/Resources/Verba.png"
+          
+          cat > "Verba.app/Contents/Info.plist" << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>Verba</string>
+              <key>CFBundleIconFile</key>
+              <string>Verba</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.verba.app</string>
+              <key>CFBundleName</key>
+              <string>Verba</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${VERSION}</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>10.13</string>
+          </dict>
+          </plist>
+          EOF
+          
+          hdiutil create -volname "Verba" -srcfolder "Verba.app" -ov -format UDZO "verba-${VERSION}-x86_64.dmg"
+      
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: "verba-*-x86_64.dmg"
+
+  create-release:
+    needs: [build-windows, build-linux, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            windows-installer/verba-*-x64-setup.exe
+            linux-deb/verba-*-amd64.deb
+            macos-dmg/verba-*-x86_64.dmg
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
