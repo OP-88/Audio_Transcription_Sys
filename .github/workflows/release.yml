@@ -62,7 +62,9 @@ jobs:
             app.py
       
       - name: Install NSIS
-        run: choco install nsis -y
+        run: |
+          choco install nsis -y
+          refreshenv
       
       - name: Create Windows Installer
         run: |
@@ -114,7 +116,7 @@ jobs:
           SectionEnd
           "@ | Out-File -FilePath installer.nsi -Encoding ASCII
           
-          makensis installer.nsi
+          & "C:\Program Files (x86)\NSIS\makensis.exe" installer.nsi
       
       - name: Upload Windows Installer
         uses: actions/upload-artifact@v4
@@ -236,6 +238,13 @@ jobs:
           npm install
           npm run build
       
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          df -h
+      
       - name: Bundle backend with PyInstaller
         run: |
           cd backend
@@ -262,6 +271,7 @@ jobs:
           mkdir -p "Verba.app/Contents/Resources"
           
           cp backend/dist/app "Verba.app/Contents/MacOS/Verba"
+          chmod +x "Verba.app/Contents/MacOS/Verba"
           cp verba-icon.png "Verba.app/Contents/Resources/Verba.png"
           
           cat > "Verba.app/Contents/Info.plist" << 'EOF'
@@ -287,13 +297,14 @@ jobs:
           </plist>
           EOF
           
-          hdiutil create -volname "Verba" -srcfolder "Verba.app" -ov -format UDZO "verba-${VERSION}-x86_64.dmg"
+          # Create zip instead of DMG to save disk space
+          zip -r "verba-${VERSION}-macOS.zip" "Verba.app"
       
-      - name: Upload macOS DMG
+      - name: Upload macOS App
         uses: actions/upload-artifact@v4
         with:
-          name: macos-dmg
-          path: "verba-*-x86_64.dmg"
+          name: macos-app
+          path: "verba-*-macOS.zip"
 
   create-release:
     needs: [build-windows, build-linux, build-macos]
@@ -309,7 +320,7 @@ jobs:
           files: |
             windows-installer/verba-*-x64-setup.exe
             linux-deb/verba-*-amd64.deb
-            macos-dmg/verba-*-x86_64.dmg
+            macos-app/verba-*-macOS.zip
           draft: false
           prerelease: false
         env:
