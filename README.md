@@ -18,14 +18,122 @@ A privacy-focused audio transcription system that runs entirely locally on your 
 
 ## 🚀 Quick Start
 
+### 📥 Download & Install
+
+Choose your platform and download the installer:
+
+#### 🪟 **Windows**
+1. Download [`verba-2.0.0-x64-setup.exe`](https://github.com/OP-88/Audio_Transcription_Sys/releases/latest)
+2. **Double-click** the installer
+3. Follow the setup wizard
+4. **Done!** Launch from Start Menu or Desktop icon
+
+#### 🍎 **macOS**
+1. Download [`verba-2.0.0-macOS.zip`](https://github.com/OP-88/Audio_Transcription_Sys/releases/latest)
+2. **Extract** the ZIP file
+3. **Drag** Verba.app to Applications folder
+4. **Right-click** → Open (first time only)
+5. **Done!** Launch from Applications
+
+#### 🐧 **Linux**
+
+**Debian/Ubuntu:**
+```bash
+# Download and install
+wget https://github.com/OP-88/Audio_Transcription_Sys/releases/latest/download/verba-2.0.0-amd64.deb
+sudo dpkg -i verba-2.0.0-amd64.deb
+
+# Launch
+verba
+```
+
+**Fedora/RHEL/CentOS:**
+```bash
+# Download and install
+wget https://github.com/OP-88/Audio_Transcription_Sys/releases/latest/download/verba-2.0.0-1.x86_64.rpm
+sudo rpm -i verba-2.0.0-1.x86_64.rpm
+
+# Launch
+verba
+```
+
+---
+
+### 🎯 First Time Setup
+
+After installation, you'll need to set up audio recording:
+
+#### 🪟 **Windows - System Audio Setup**
+
+Windows requires one-time audio configuration:
+
+1. **Run the audio setup script:**
+   - Find `setup-audio.bat` in installation folder
+   - **Right-click** → Run as Administrator
+
+2. **Choose your method:**
+   - **Stereo Mix** (built-in, if available)
+   - **VB-Audio Virtual Cable** (recommended, free download)
+   - **Browser Screen Sharing** (zero setup, works everywhere)
+
+3. **Test it!** Try recording with the app
+
+> **💡 Tip:** Browser screen sharing is the easiest - just click "Share Audio" when recording!
+
+#### 🍎 **macOS - System Audio**
+
+macOS has two options for system audio:
+
+**Option 1: BlackHole (Recommended)**
+1. Download [BlackHole](https://github.com/ExistentialAudio/BlackHole/releases)
+2. Install and follow their setup guide
+3. Launch Verba and record!
+
+**Option 2: Browser Screen Sharing (Easiest)**
+- No setup needed!
+- Click RECORD → Select "System Audio"
+- Choose "Share Audio" in browser dialog
+- **Done!**
+
+#### 🐧 **Linux - PulseAudio**
+
+Linux works out of the box with PulseAudio:
+
+**Automatic Setup:**
+```bash
+# Run the setup script
+./setup-audio.sh
+```
+
+This creates a virtual audio device for system audio recording.
+
+---
+
+### 🎬 Using Verba
+
+1. **Launch the app** (use your platform's method above)
+2. **Click RECORD** button
+3. **Select audio source:**
+   - 🔊 **System Audio** - Record videos, music, podcasts
+   - 🎤 **Microphone** - Record your voice
+4. **Click STOP** when done
+5. **Get instant transcription** with AI summary!
+
+**New in v2.0.0:** ✨ Record for **4+ hours** without crashes! Progressive upload keeps memory low.
+
+---
+
+## 💻 Developer Installation
+
+Want to run from source? Here's how:
+
 ### Prerequisites
 
 - **Python 3.8+** with pip
 - **Node.js 16+** with npm
 - **FFmpeg** (for audio processing)
-- **PulseAudio** (Linux only, for system audio capture)
 
-### Installation
+### Setup
 
 1. **Clone the repository:**
 ```bash
