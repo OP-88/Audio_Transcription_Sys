@@ -207,11 +207,67 @@ jobs:
           
           dpkg-deb --build verba-deb verba-${VERSION}-amd64.deb
       
+      - name: Create RPM package
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          
+          # Create RPM build directory structure
+          mkdir -p verba-rpm/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+          mkdir -p verba-rpm/BUILDROOT/verba-${VERSION}-1.x86_64/usr/local/bin
+          mkdir -p verba-rpm/BUILDROOT/verba-${VERSION}-1.x86_64/usr/share/applications
+          mkdir -p verba-rpm/BUILDROOT/verba-${VERSION}-1.x86_64/usr/share/icons/hicolor/256x256/apps
+          
+          # Copy files to build root
+          cp backend/dist/app verba-rpm/BUILDROOT/verba-${VERSION}-1.x86_64/usr/local/bin/verba
+          chmod +x verba-rpm/BUILDROOT/verba-${VERSION}-1.x86_64/usr/local/bin/verba
+          cp verba-icon.png verba-rpm/BUILDROOT/verba-${VERSION}-1.x86_64/usr/share/icons/hicolor/256x256/apps/verba.png
+          sed 's|Exec=.*|Exec=/usr/local/bin/verba|' verba.desktop > verba-rpm/BUILDROOT/verba-${VERSION}-1.x86_64/usr/share/applications/verba.desktop
+          sed -i 's|Icon=.*|Icon=verba|' verba-rpm/BUILDROOT/verba-${VERSION}-1.x86_64/usr/share/applications/verba.desktop
+          
+          # Create spec file
+          cat > verba-rpm/SPECS/verba.spec << EOF
+          Name:           verba
+          Version:        ${VERSION}
+          Release:        1%{?dist}
+          Summary:        Audio Transcription System
+          License:        GPLv3
+          URL:            https://github.com/OP-88/Audio_Transcription_Sys
+          BuildArch:      x86_64
+          
+          %description
+          Offline-first meeting assistant with transcription and summarization.
+          Browser-based interface with local AI processing.
+          
+          %files
+          %attr(755, root, root) /usr/local/bin/verba
+          /usr/share/applications/verba.desktop
+          /usr/share/icons/hicolor/256x256/apps/verba.png
+          
+          %changelog
+          * $(date "+%a %b %d %Y") OP-88 <markmunene827@gmail.com> - ${VERSION}-1
+          - Release ${VERSION}
+          EOF
+          
+          # Build RPM
+          rpmbuild --define "_topdir $(pwd)/verba-rpm" \
+                   --buildroot $(pwd)/verba-rpm/BUILDROOT/verba-${VERSION}-1.x86_64 \
+                   -bb verba-rpm/SPECS/verba.spec
+          
+          # Move RPM to current directory
+          mv verba-rpm/RPMS/x86_64/verba-${VERSION}-1*.rpm verba-${VERSION}-1.x86_64.rpm
+      
       - name: Upload DEB package
         uses: actions/upload-artifact@v4
         with:
           name: linux-deb
           path: "verba-*-amd64.deb"
+      
+      - name: Upload RPM package
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-rpm
+          path: "verba-*-1.x86_64.rpm"
 
   build-macos:
     runs-on: macos-latest
@@ -322,6 +378,7 @@ jobs:
           files: |
             windows-installer/verba-*-x64-setup.exe
             linux-deb/verba-*-amd64.deb
+            linux-rpm/verba-*-1.x86_64.rpm
             macos-app/verba-*-macOS.zip
           draft: false
           prerelease: false
