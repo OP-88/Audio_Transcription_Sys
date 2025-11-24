@@ -16,6 +16,7 @@ import logging
 from transcriber import transcribe_audio
 from summarizer import summarize_transcript
 from storage import storage
+from chunk_storage import ChunkStorage
 import settings
 
 # Configure logging
@@ -285,6 +286,174 @@ def delete_session(session_id: str):
             status_code=500,
             content={
                 "error": "Failed to delete session",
+                "detail": str(e)
+            }
+        )
+
+
+# Chunk upload endpoints for long recordings
+class InitializeRecordingRequest(BaseModel):
+    """Request body for initializing a recording session"""
+    session_id: str
+    mime_type: str = "audio/webm"
+
+
+@app.post("/api/recording/initialize")
+async def initialize_recording(request: InitializeRecordingRequest):
+    """
+    Initialize a new recording session for progressive chunk uploads
+    """
+    try:
+        chunk_store = ChunkStorage(request.session_id)
+        chunk_store.initialize_session(mime_type=request.mime_type)
+        
+        return {
+            "session_id": request.session_id,
+            "status": "initialized"
+        }
+    except Exception as e:
+        logger.error(f"Failed to initialize recording: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Failed to initialize recording session",
+                "detail": str(e)
+            }
+        )
+
+
+@app.post("/api/recording/upload-chunk/{session_id}/{chunk_index}")
+async def upload_chunk(session_id: str, chunk_index: int, chunk: UploadFile = File(...)):
+    """
+    Upload a single audio chunk for a recording session
+    """
+    try:
+        chunk_store = ChunkStorage(session_id)
+        
+        # Read chunk data
+        chunk_data = await chunk.read()
+        
+        if len(chunk_data) == 0:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Empty chunk data"}
+            )
+        
+        # Save chunk
+        result = chunk_store.save_chunk(chunk_index, chunk_data)
+        
+        return {
+            "status": "success",
+            **result
+        }
+    except ValueError as e:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error": "Session not found",
+                "detail": str(e)
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to upload chunk {chunk_index} for session {session_id}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Failed to save chunk",
+                "detail": str(e)
+            }
+        )
+
+
+@app.post("/api/recording/finalize/{session_id}")
+async def finalize_recording(session_id: str):
+    """
+    Finalize a recording session by combining all chunks and transcribing
+    """
+    tmp_path = None
+    try:
+        chunk_store = ChunkStorage(session_id)
+        
+        # Create temporary file for combined audio
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
+            tmp_path = tmp.name
+        
+        # Combine all chunks
+        result = chunk_store.combine_chunks(Path(tmp_path))
+        
+        logger.info(f"Finalized recording {session_id}: {result['chunks_combined']} chunks, {result['total_size']} bytes")
+        
+        # Transcribe the combined audio
+        logger.info(f"Transcribing finalized recording: {session_id}")
+        transcript = transcribe_audio(tmp_path, preprocess=settings.ENABLE_AUDIO_PREPROCESSING)
+        
+        # Clean up chunk storage
+        chunk_store.cleanup()
+        
+        return {
+            "transcript": transcript,
+            "chunks_combined": result["chunks_combined"],
+            "total_size": result["total_size"],
+            "status": "success"
+        }
+    
+    except ValueError as e:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error": "Session not found or no chunks available",
+                "detail": str(e)
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to finalize recording {session_id}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Failed to finalize recording",
+                "detail": str(e)
+            }
+        )
+    finally:
+        # Clean up temporary file
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except Exception as e:
+                logger.warning(f"Could not delete temp file: {e}")
+
+
+@app.get("/api/recording/status/{session_id}")
+async def recording_status(session_id: str):
+    """
+    Get status of an ongoing recording session
+    """
+    try:
+        chunk_store = ChunkStorage(session_id)
+        metadata = chunk_store.get_metadata()
+        
+        return {
+            "session_id": session_id,
+            "chunks_received": metadata["chunks_received"],
+            "total_size": metadata["total_size"],
+            "created_at": metadata["created_at"],
+            "finalized": metadata.get("finalized", False),
+            "status": "success"
+        }
+    except ValueError as e:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error": "Session not found",
+                "detail": str(e)
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to get status for session {session_id}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Failed to get session status",
                 "detail": str(e)
             }
         )

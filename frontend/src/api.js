@@ -183,3 +183,91 @@ export async function deleteSession(sessionId) {
 
   return result
 }
+
+/**
+ * Initialize a progressive recording session
+ * @param {string} sessionId - Unique session ID
+ * @param {string} mimeType - Audio MIME type
+ * @returns {Promise<{session_id: string, status: string}>}
+ */
+export async function initializeRecording(sessionId, mimeType = 'audio/webm') {
+  const response = await fetch(`${API_URL}/api/recording/initialize`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      session_id: sessionId,
+      mime_type: mimeType
+    }),
+  })
+
+  const data = await response.json()
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to initialize recording')
+  }
+
+  return data
+}
+
+/**
+ * Upload a chunk during progressive recording
+ * @param {string} sessionId - Session ID
+ * @param {number} chunkIndex - Sequential chunk number
+ * @param {Blob} chunkBlob - Audio chunk data
+ * @returns {Promise<{status: string, chunk_index: number, total_chunks: number, total_size: number}>}
+ */
+export async function uploadChunk(sessionId, chunkIndex, chunkBlob) {
+  const formData = new FormData()
+  formData.append('chunk', chunkBlob, `chunk_${chunkIndex}.webm`)
+
+  const response = await fetch(`${API_URL}/api/recording/upload-chunk/${sessionId}/${chunkIndex}`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  const data = await response.json()
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to upload chunk')
+  }
+
+  return data
+}
+
+/**
+ * Finalize recording and get transcript
+ * @param {string} sessionId - Session ID
+ * @returns {Promise<{transcript: string, chunks_combined: number, total_size: number, status: string}>}
+ */
+export async function finalizeRecording(sessionId) {
+  const response = await fetch(`${API_URL}/api/recording/finalize/${sessionId}`, {
+    method: 'POST',
+  })
+
+  const data = await response.json()
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to finalize recording')
+  }
+
+  return data
+}
+
+/**
+ * Get recording session status
+ * @param {string} sessionId - Session ID
+ * @returns {Promise<{session_id: string, chunks_received: number, total_size: number}>}
+ */
+export async function getRecordingStatus(sessionId) {
+  const response = await fetch(`${API_URL}/api/recording/status/${sessionId}`)
+
+  const data = await response.json()
+
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to get recording status')
+  }
+
+  return data
+}
