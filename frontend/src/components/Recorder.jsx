@@ -46,13 +46,13 @@ function Recorder({ onTranscriptComplete, onTranscribing, onError }) {
   // Progressive recording state
   const [recordingDuration, setRecordingDuration] = useState(0)
   const [uploadedSize, setUploadedSize] = useState(0)
-  const [sessionId, setSessionId] = useState(null)
-  const [chunkIndex, setChunkIndex] = useState(0)
 
   const mediaRecorderRef = useRef(null)
   const chunksRef = useRef([])
   const uploadIntervalRef = useRef(null)
   const durationIntervalRef = useRef(null)
+  const sessionIdRef = useRef(null)
+  const chunkIndexRef = useRef(0)
 
   const UPLOAD_INTERVAL_MS = 10000 // Upload every 10 seconds
 
@@ -83,13 +83,13 @@ function Recorder({ onTranscriptComplete, onTranscribing, onError }) {
       const chunkBlob = new Blob(chunksRef.current, { type: 'audio/webm' })
 
       // Upload to backend
-      const result = await uploadChunk(sessionId, chunkIndex, chunkBlob)
+      const result = await uploadChunk(sessionIdRef.current, chunkIndexRef.current, chunkBlob)
 
-      console.log(`Uploaded chunk ${chunkIndex}: ${formatBytes(chunkBlob.size)}`)
+      console.log(`Uploaded chunk ${chunkIndexRef.current}: ${formatBytes(chunkBlob.size)}`)
 
       // Update stats
       setUploadedSize(result.total_size)
-      setChunkIndex(prev => prev + 1)
+      chunkIndexRef.current += 1
 
       // Clear uploaded chunks from memory
       chunksRef.current = []
@@ -106,8 +106,8 @@ function Recorder({ onTranscriptComplete, onTranscribing, onError }) {
     try {
       // Generate session ID
       const newSessionId = generateUUID()
-      setSessionId(newSessionId)
-      setChunkIndex(0)
+      sessionIdRef.current = newSessionId
+      chunkIndexRef.current = 0
       setRecordingDuration(0)
       setUploadedSize(0)
       chunksRef.current = []
@@ -192,12 +192,12 @@ function Recorder({ onTranscriptComplete, onTranscribing, onError }) {
     }
   }
 
-  const start ScreenRecording = async () => {
+  const startScreenRecording = async () => {
     try {
       // Generate session ID
       const newSessionId = generateUUID()
-      setSessionId(newSessionId)
-      setChunkIndex(0)
+      sessionIdRef.current = newSessionId
+      chunkIndexRef.current = 0
       setRecordingDuration(0)
       setUploadedSize(0)
       chunksRef.current = []
@@ -286,8 +286,8 @@ function Recorder({ onTranscriptComplete, onTranscribing, onError }) {
     onTranscribing(true)
 
     try {
-      console.log(`Finalizing recording ${sessionId}...`)
-      const data = await finalizeRecording(sessionId)
+      console.log(`Finalizing recording ${sessionIdRef.current}...`)
+      const data = await finalizeRecording(sessionIdRef.current)
 
       console.log(`Recording finalized: ${data.chunks_combined} chunks, ${formatBytes(data.total_size)}`)
 
@@ -302,7 +302,7 @@ function Recorder({ onTranscriptComplete, onTranscribing, onError }) {
       onTranscribing(false)
     } finally {
       setIsProcessing(false)
-      setSessionId(null)
+      sessionIdRef.current = null
       setRecordingDuration(0)
       setUploadedSize(0)
     }
