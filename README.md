@@ -114,7 +114,46 @@ The launcher will:
 5. Click "Stop" when done
 6. Get instant transcription and summary!
 
-## 🎵 Audio Setup (Linux)
+## 🎵 Audio Setup (System Audio Capture)
+
+To record **system audio** (Zoom meetings, browser audio, etc.), follow the setup for your platform:
+
+### 🪟 Windows
+
+Run the audio setup script:
+```cmd
+setup-audio.bat
+```
+
+This script will help you enable one of these options:
+
+**Option 1: Stereo Mix** (if available on your PC)
+- Built into Windows, free
+- The script will guide you to enable it in Sound Settings
+
+**Option 2: VB-Audio Virtual Cable** (recommended if Stereo Mix unavailable)
+- Download from: https://vb-audio.com/Cable/ (free)
+- Install it, then set "CABLE Input" as default playback
+- Verba will detect "CABLE Output" as a recording device
+
+**Option 3: Browser Screen Sharing** (no setup required!)
+- Click Record in Verba
+- Select "System Audio" → Browser asks to share screen
+- Choose the Zoom window or tab and CHECK "Share audio"
+
+### 🍎 macOS
+
+**Option 1: Browser Screen Sharing** (easiest, no setup)
+- Same as Windows Option 3 above
+- Works in Chrome/Edge for tab audio or app window audio
+
+**Option 2: BlackHole** (for system-wide audio)
+- Download from: https://github.com/ExistentialAudio/BlackHole
+- Install BlackHole 2ch
+- Create Multi-Output Device in Audio MIDI Setup
+- Verba will detect BlackHole as recording source
+
+### 🐧 Linux
 
 The system automatically configures PulseAudio to capture both system audio and microphone. You'll be able to **hear** what's playing while it's being recorded.
 
@@ -124,6 +163,10 @@ To manually setup audio:
 ```
 
 Then in your browser, select **"Monitor of Verba Combined Audio"** as the audio input.
+
+---
+
+**Note:** Microphone recording works out-of-the-box on all platforms without any setup!
 
 ## 📁 Project Structure
 

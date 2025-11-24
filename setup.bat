@@ -78,9 +78,18 @@ echo ========================================
 echo    Setup Complete!
 echo ========================================
 echo.
+echo NEXT STEP - Audio Setup (Important!):
+echo To record system audio (Zoom, browser, etc):
+echo   Run: setup-audio.bat
+echo.
 echo You can now launch Verba:
 echo   1. Search for 'Verba' in Start Menu
 echo   2. Or double-click: start-verba.bat
 echo   3. Or use: python start-verba.py
+echo.
+set /p RUN_AUDIO="Run audio setup now? (Y/N): "
+if /i "%RUN_AUDIO%"=="Y" (
+    call setup-audio.bat
+)
 echo.
 pause
