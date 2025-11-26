@@ -2,7 +2,7 @@
  * Recorder component with Progressive Chunk Upload - handles long audio recordings (4+ hours)
  * 
  * Key improvements:
- * - Uploads chunks every 10 seconds instead of storing in memory
+ * - Uploads chunks every 10 seconds instead of storing in memory 
  * - Shows recording timer and file size
  * - Supports 4+ hour recordings without crashes
  * - Memory usage stays under 10MB
