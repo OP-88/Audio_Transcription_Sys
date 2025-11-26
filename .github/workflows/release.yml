@@ -42,15 +42,15 @@ jobs:
           @'
           @echo off
           cd %~dp0
-          start "" "%~dp0backend\app.exe"
-          timeout /t 3 /nobreak >nul
-          start http://localhost:5173
+          start "Verba Backend" "%~dp0backend\app.exe"
+          timeout /t 5 /nobreak >nul
+          start http://localhost:8000
           '@ | Out-File -FilePath verba-launcher.bat -Encoding ASCII
       
       - name: Bundle backend with PyInstaller
         run: |
           cd backend
-          pyinstaller --onefile --noconsole `
+          pyinstaller --onefile --windowed `
             --add-data "../frontend/dist;frontend/dist" `
             --hidden-import=uvicorn.logging `
             --hidden-import=uvicorn.loops `

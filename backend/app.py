@@ -3,11 +3,13 @@ Verba Backend - FastAPI server for audio transcription, summarization, and sessi
 """
 from fastapi import FastAPI, File, UploadFile, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
 import tempfile
 import os
+import sys
 from pathlib import Path
 from datetime import datetime
 import logging
@@ -24,6 +26,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Verba API", version="0.2.0", description="Offline-first meeting assistant")
+
+# Detect if running as PyInstaller bundle
+def is_bundled():
+    return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
+
+# Get the base path (either development or bundled)
+def get_base_path():
+    if is_bundled():
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        return Path(sys._MEIPASS)
+    return Path(__file__).parent.parent
 
 # CORS configuration
 origins = [
@@ -48,6 +61,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files if running as bundled app (Windows installer, etc.)
+if is_bundled():
+    static_dir = get_base_path() / "frontend" / "dist"
+    if static_dir.exists():
+        logger.info(f"Running as bundled app, serving static files from: {static_dir}")
+        # Mount static assets
+        app.mount("/assets", StaticFiles(directory=str(static_dir / "assets")), name="assets")
+    else:
+        logger.warning(f"Static directory not found: {static_dir}")
 
 
 # Request/Response models
@@ -610,6 +633,33 @@ def delete_session(session_id: str):
                 "error": "Failed to delete session",
                 "detail": str(e)
             }
+        )
+
+
+# Serve frontend for bundled app (catch-all for React routing)
+if is_bundled():
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        """
+        Serve the React frontend for any non-API routes
+        This enables client-side routing in the bundled app
+        """
+        static_dir = get_base_path() / "frontend" / "dist"
+        
+        # If requesting a specific file that exists, serve it
+        file_path = static_dir / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        
+        # Otherwise, serve index.html for React routing
+        index_path = static_dir / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
+        
+        # Fallback error
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Frontend not found"}
         )
 
 
