@@ -42,7 +42,7 @@ jobs:
           @'
           @echo off
           cd %~dp0
-          start "Verba Backend" "%~dp0backend\app.exe"
+          start "Verba Backend" "%~dp0app.exe"
           timeout /t 5 /nobreak >nul
           start http://localhost:8000
           '@ | Out-File -FilePath verba-launcher.bat -Encoding ASCII
