@@ -25,6 +25,9 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+backend/build/
+backend/dist/
+backend/recording_chunks/
 
 # Node
 frontend/node_modules/
