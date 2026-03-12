@@ -334,3 +334,4 @@ For issues and questions, please visit the [Issues](https://github.com/OP-88/Aud
 ---
 
 **Built with ❤️ for privacy and local-first software**
+ 
